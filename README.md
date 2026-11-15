@@ -392,4 +392,4 @@ All assumptions and trade-offs are recorded in [DECISIONS.md](DECISIONS.md).
 
 ## License
 
-MIT.
+@ Hesham Moubarak
