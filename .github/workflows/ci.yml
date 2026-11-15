@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,postgres]"
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type check
+        run: mypy
+      - name: Test (offline, SQLite, mock models)
+        run: pytest --cov --cov-report=term-missing --cov-report=xml
+        env:
+          EVALFORGE_OFFLINE_MODE: "true"
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: evalforge
+          POSTGRES_PASSWORD: evalforge
+          POSTGRES_DB: evalforge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U evalforge" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      EVALFORGE_DATABASE_URL: postgresql+psycopg://evalforge:evalforge@localhost:5432/evalforge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev,postgres]"
+      - name: Migrations apply and match the models
+        run: |
+          alembic upgrade head
+          alembic check
+      - name: End-to-end demo on PostgreSQL
+        run: python scripts/seed_demo.py --reset

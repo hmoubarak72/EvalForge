@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evalforge"
+version = "0.1.0"
+description = "Turn production LLM traffic into a self-growing, production-representative evaluation dataset."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "scikit-learn>=1.3",
+    "apscheduler>=3.10,<4",
+    "structlog>=24.1",
+    "streamlit>=1.45",
+    "pandas>=2.1",
+    "altair>=5.2",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+# The standalone `hdbscan` package is optional: scikit-learn >= 1.3 ships
+# sklearn.cluster.HDBSCAN, which is the default backend (see DECISIONS.md).
+hdbscan = ["hdbscan>=0.8.38"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "coverage>=7.4",
+    "ruff>=0.4",
+    "mypy>=1.9",
+]
+
+[project.scripts]
+evalforge = "evalforge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q --strict-markers"
+markers = [
+    "integration: tests that exercise several layers against a local database",
+]
+
+[tool.coverage.run]
+source = ["src/evalforge"]
+omit = ["src/evalforge/ui/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["B008"]  # FastAPI's Depends() in argument defaults is idiomatic
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/*" = ["E501"]
+"src/evalforge/demo/corpus.py" = ["E501"]
+# Long prompt templates and UI/CLI strings read better unwrapped.
+"src/evalforge/services/labelers.py" = ["E501"]
+"src/evalforge/services/scoring.py" = ["E501"]
+"src/evalforge/ui/dashboard.py" = ["E501"]
+"scripts/seed_demo.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+files = ["src/evalforge"]
+exclude = ["src/evalforge/ui/"]

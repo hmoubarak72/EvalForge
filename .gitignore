@@ -1,0 +1,20 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+# Local databases and generated demo data
+*.db
+*.sqlite3
+data/
+# Office lock files
+~$*

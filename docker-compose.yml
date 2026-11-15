@@ -1,0 +1,84 @@
+# Local orchestration: PostgreSQL log store + API + nightly pipeline/eval worker + dashboard.
+#
+#   docker compose up --build                 # start everything
+#   docker compose --profile demo run --rm seed   # load the simulated demo data
+#
+# The stack runs fully offline by default (mock models). To use real models, set
+# EVALFORGE_OFFLINE_MODE=false and the provider variables in a `.env` file.
+
+x-evalforge: &evalforge
+  build: .
+  image: evalforge:local
+  environment: &evalforge-env
+    EVALFORGE_DATABASE_URL: postgresql+psycopg://evalforge:evalforge@postgres:5432/evalforge
+    EVALFORGE_OFFLINE_MODE: ${EVALFORGE_OFFLINE_MODE:-true}
+    EVALFORGE_AUTH__MODE: ${EVALFORGE_AUTH__MODE:-local_dev}
+    EVALFORGE_AUTH_TOKEN: ${EVALFORGE_AUTH_TOKEN:-}
+    EVALFORGE_LOG_LEVEL: ${EVALFORGE_LOG_LEVEL:-INFO}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  volumes:
+    - demo-data:/app/data
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: evalforge
+      POSTGRES_PASSWORD: evalforge   # local development only
+      POSTGRES_DB: evalforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evalforge -d evalforge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *evalforge
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *evalforge
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Classification pipeline + auto-labeling + eval runner, on the nightly schedule.
+  pipeline:
+    <<: *evalforge
+    command: ["evalforge", "scheduler"]
+    environment:
+      <<: *evalforge-env
+      EVALFORGE_SCHEDULER__ENABLED: "true"
+      EVALFORGE_SCHEDULER__CRON: ${EVALFORGE_SCHEDULER__CRON:-0 2 * * *}
+
+  dashboard:
+    <<: *evalforge
+    command: ["streamlit", "run", "src/evalforge/ui/dashboard.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+    ports:
+      - "8501:8501"
+
+  # One-off: generate simulated production traffic and replay two weeks of nightly runs.
+  seed:
+    <<: *evalforge
+    profiles: ["demo"]
+    command: ["python", "scripts/seed_demo.py", "--reset"]
+    restart: "no"
+
+volumes:
+  pg-data:
+  demo-data:
